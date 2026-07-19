@@ -1,0 +1,22 @@
+{
+    "name": "danmat/panelix",
+    "description": "Panelix — a super-lightweight, config-driven PHP admin CMS: auth, roles, and generic CRUD over your existing tables.",
+    "type": "library",
+    "keywords": ["cms", "admin", "crud", "php", "lightweight"],
+    "license": "MIT",
+    "authors": [
+        { "name": "DanMat" }
+    ],
+    "require": {
+        "php": ">=8.1",
+        "ext-pdo": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Panelix\\": "src/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
