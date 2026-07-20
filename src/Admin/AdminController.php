@@ -19,7 +19,7 @@ final class AdminController extends Controller
     {
         $r->get('/admin/login', fn (): string => $this->loginForm());
         $r->post('/admin/login', fn (): string => $this->login());
-        $r->get('/admin/logout', fn (): string => $this->logout());
+        $r->post('/admin/logout', fn (): string => $this->logout());
         $r->get('/admin', fn (): string => $this->dashboardPage());
         $r->get('/admin/dashboard', fn (): string => $this->dashboardPage());
 
@@ -53,7 +53,16 @@ final class AdminController extends Controller
 
     private function logout(): string
     {
-        $this->auth->logout();
+        if (Csrf::check(Request::fromGlobals()->input('_token'))) {
+            $this->auth->logout();
+            // Fully destroy the session + its cookie.
+            $_SESSION = [];
+            if (ini_get('session.use_cookies')) {
+                $p = session_get_cookie_params();
+                setcookie(session_name(), '', ['expires' => time() - 42000, 'path' => $p['path'], 'domain' => $p['domain'], 'secure' => $p['secure'], 'httponly' => $p['httponly'], 'samesite' => $p['samesite']]);
+            }
+            session_destroy();
+        }
         $this->redirect('/admin/login');
     }
 

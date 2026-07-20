@@ -33,9 +33,7 @@ final class Application
 
     public function run(): void
     {
-        if (session_status() !== PHP_SESSION_ACTIVE) {
-            session_start();
-        }
+        $this->startSession();
         $request = Request::fromGlobals();
 
         try {
@@ -70,6 +68,29 @@ final class Application
                 : 'An unexpected error occurred. Reference: <code>' . $ref . '</code>';
             $this->send($this->notice('Something went wrong', $message), 500);
         }
+    }
+
+    /** Start the session with secure cookie defaults set BEFORE session_start(). */
+    private function startSession(): void
+    {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            return;
+        }
+        $https = ($_SERVER['HTTPS'] ?? '') === 'on'
+            || ($_SERVER['SERVER_PORT'] ?? '') === '443'
+            || strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
+
+        ini_set('session.use_strict_mode', '1');
+        ini_set('session.use_only_cookies', '1');
+        session_name('nimbus_session');
+        session_set_cookie_params([
+            'lifetime' => 0,
+            'path'     => '/',
+            'httponly' => true,
+            'secure'   => $https,
+            'samesite' => 'Lax',
+        ]);
+        session_start();
     }
 
     private function home(): string

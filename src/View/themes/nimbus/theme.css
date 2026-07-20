@@ -76,7 +76,9 @@ body.nb {
 }
 .nb-uname { display: flex; flex-direction: column; line-height: 1.2; font-weight: 600; }
 .nb-uname small { font-weight: 500; color: var(--nb-muted); font-size: 11px; text-transform: capitalize; }
-.nb-signout { margin-left: 8px; color: var(--nb-muted) !important; font-size: 13px; }
+.nb-signout-form { margin: 0 0 0 8px; }
+.nb-signout { background: none; border: 0; padding: 0; cursor: pointer; color: var(--nb-muted); font: inherit; font-size: 13px; }
+.nb-signout:hover { color: var(--nb-ink); text-decoration: underline; }
 .nb-content { padding: 28px; max-width: 1200px; width: 100%; }
 
 .nb-page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }

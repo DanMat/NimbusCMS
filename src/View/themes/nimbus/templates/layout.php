@@ -33,7 +33,10 @@ $logo = file_get_contents(dirname(__DIR__) . '/logo.svg');
         <div class="nb-user">
             <span class="nb-avatar"><?= $e($user?->initial()) ?></span>
             <span class="nb-uname"><?= $e($user?->name) ?><small><?= $e($user?->role) ?></small></span>
-            <a class="nb-signout" href="/admin/logout">Sign out</a>
+            <form method="post" action="/admin/logout" class="nb-signout-form">
+                <input type="hidden" name="_token" value="<?= $e(\Nimbus\Http\Csrf::token()) ?>">
+                <button type="submit" class="nb-signout">Sign out</button>
+            </form>
         </div>
     </header>
     <main class="nb-content"><?= $__content ?></main>
