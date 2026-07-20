@@ -6,6 +6,7 @@ namespace Nimbus\Admin;
 
 use Nimbus\Content\Collection;
 use Nimbus\Content\CollectionRepository;
+use Nimbus\Content\CollectionService;
 use Nimbus\Content\EntryInput;
 use Nimbus\Content\EntryRepository;
 use Nimbus\Content\EntryService;
@@ -29,14 +30,16 @@ final class CollectionsController extends Controller
     private RelationRepository $relations;
     private FieldTypeRegistry $types;
     private EntryService $entryService;
+    private CollectionService $collectionService;
 
     public function boot(): void
     {
-        $this->collections  = new CollectionRepository($this->db);
-        $this->entries      = new EntryRepository($this->db);
-        $this->relations    = new RelationRepository($this->db);
-        $this->types        = new FieldTypeRegistry();
-        $this->entryService = new EntryService($this->db, $this->entries, $this->relations, $this->types);
+        $this->collections       = new CollectionRepository($this->db);
+        $this->entries           = new EntryRepository($this->db);
+        $this->relations         = new RelationRepository($this->db);
+        $this->types             = new FieldTypeRegistry();
+        $this->entryService      = new EntryService($this->db, $this->entries, $this->relations, $this->types);
+        $this->collectionService = new CollectionService($this->db, $this->collections);
     }
 
     public function routes(Router $r): void
@@ -114,8 +117,14 @@ final class CollectionsController extends Controller
             $this->redirect('/admin/collections/new');
         }
 
-        $id = $this->collections->create($handle, $name, $this->icon($req), (string) $req->input('description'), $this->options($req));
-        $this->collections->syncFields($id, $this->fieldDefs($req));
+        try {
+            $this->collectionService->create($handle, $name, $this->icon($req), (string) $req->input('description'), $this->options($req), $this->fieldDefs($req));
+        } catch (\PDOException $e) {
+            if (\Nimbus\Database\Connection::isDuplicateKey($e)) {
+                $this->redirect('/admin/collections/new'); // handle taken (race)
+            }
+            throw $e;
+        }
         $this->redirect('/admin/collections?msg=created');
     }
 
@@ -132,8 +141,7 @@ final class CollectionsController extends Controller
         if ($name === '') {
             $this->redirect("/admin/collections/{$id}/edit");
         }
-        $this->collections->update($id, $name, $this->icon($req), (string) $req->input('description'), $this->options($req));
-        $this->collections->syncFields($id, $this->fieldDefs($req));
+        $this->collectionService->update($id, $name, $this->icon($req), (string) $req->input('description'), $this->options($req), $this->fieldDefs($req));
         $this->redirect('/admin/collections?msg=updated');
     }
 
@@ -141,7 +149,7 @@ final class CollectionsController extends Controller
     {
         $this->requireAdmin();
         $this->requireCsrf(Request::fromGlobals());
-        $this->collections->delete($id);
+        $this->collectionService->delete($id);
         $this->redirect('/admin/collections?msg=deleted');
     }
 
