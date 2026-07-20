@@ -76,6 +76,36 @@ final class Connection
         return (int) $this->pdo()->lastInsertId();
     }
 
+    /**
+     * Run $callback inside a transaction, committing on success and rolling
+     * back on any throwable. Used at the application-service level (not inside
+     * individual repository methods) so a whole write is atomic.
+     */
+    public function transaction(callable $callback): mixed
+    {
+        $pdo = $this->pdo();
+        if ($pdo->inTransaction()) {
+            return $callback(); // already inside one — join it
+        }
+        $pdo->beginTransaction();
+        try {
+            $result = $callback();
+            $pdo->commit();
+            return $result;
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /** True when a PDOException is a duplicate-key (unique constraint) violation. */
+    public static function isDuplicateKey(\PDOException $e): bool
+    {
+        return (int) ($e->errorInfo[1] ?? 0) === 1062;
+    }
+
     public function tableExists(string $table): bool
     {
         $row = $this->selectOne(

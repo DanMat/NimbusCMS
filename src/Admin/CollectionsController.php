@@ -6,7 +6,9 @@ namespace Nimbus\Admin;
 
 use Nimbus\Content\Collection;
 use Nimbus\Content\CollectionRepository;
+use Nimbus\Content\EntryInput;
 use Nimbus\Content\EntryRepository;
+use Nimbus\Content\EntryService;
 use Nimbus\Content\FieldTypeRegistry;
 use Nimbus\Content\Permissions;
 use Nimbus\Content\RelationRepository;
@@ -26,13 +28,15 @@ final class CollectionsController extends Controller
     private EntryRepository $entries;
     private RelationRepository $relations;
     private FieldTypeRegistry $types;
+    private EntryService $entryService;
 
     public function boot(): void
     {
-        $this->collections = new CollectionRepository($this->db);
-        $this->entries     = new EntryRepository($this->db);
-        $this->relations   = new RelationRepository($this->db);
-        $this->types       = new FieldTypeRegistry();
+        $this->collections  = new CollectionRepository($this->db);
+        $this->entries      = new EntryRepository($this->db);
+        $this->relations    = new RelationRepository($this->db);
+        $this->types        = new FieldTypeRegistry();
+        $this->entryService = new EntryService($this->db, $this->entries, $this->relations, $this->types);
     }
 
     public function routes(Router $r): void
@@ -181,14 +185,7 @@ final class CollectionsController extends Controller
         $this->requireManage($collection);
         $req = Request::fromGlobals();
         $this->requireCsrf($req);
-
-        // Singletons never create a second entry: update the existing one if present.
-        $id = null;
-        if ($collection->isSingle()) {
-            $existing = $this->entries->firstForCollection($collection->id);
-            $id = $existing !== null ? (int) $existing['id'] : null;
-        }
-        return $this->saveEntry($collection, $req, $id);
+        return $this->saveEntry($collection, $req, null);
     }
 
     private function entryUpdate(string $handle, int $id): string
@@ -204,29 +201,16 @@ final class CollectionsController extends Controller
         return $this->saveEntry($collection, $req, $id);
     }
 
-    /** Shared create/update: validate, and on failure re-render with errors. */
+    /** Read request -> input object -> EntryService; render errors or redirect. */
     private function saveEntry(Collection $collection, Request $req, ?int $id): string
     {
-        $model  = $this->modelFromRequest($collection, $req, $id);
-        $errors = $this->validate($collection, $model);
-        if ($errors !== []) {
-            return $this->renderEntryForm($collection, $model, $errors);
+        $input  = $this->inputFromRequest($collection, $req);
+        $result = $this->entryService->save($collection, $input, $id, $this->auth->user()?->id);
+
+        if (!$result->successful) {
+            return $this->renderEntryForm($collection, $this->modelFromInput($input, $id), $result->errors);
         }
-        $attrs = $this->attrsFromModel($collection, $model);
-        if ($id === null) {
-            $id  = $this->entries->create($collection->id, $attrs, $this->auth->user()?->id);
-            $msg = 'created';
-        } else {
-            $this->entries->update($collection->id, $id, $attrs);
-            $msg = $collection->isSingle() ? 'saved' : 'updated';
-        }
-        // Relation fields are stored in nb_relations, not the entry JSON.
-        foreach ($collection->fields as $field) {
-            if ($field->type === 'relation') {
-                $ids = is_array($model['values'][$field->handle] ?? null) ? $model['values'][$field->handle] : [];
-                $this->relations->sync($id, $field->id, $ids);
-            }
-        }
+        $msg = $id === null ? 'created' : ($collection->isSingle() ? 'saved' : 'updated');
         $this->redirect("/admin/collections/{$collection->handle}/entries?msg={$msg}");
     }
 
@@ -235,7 +219,11 @@ final class CollectionsController extends Controller
         $collection = $this->mustFind($handle);
         $this->requireManage($collection);
         $this->requireCsrf(Request::fromGlobals());
-        $this->entries->delete($collection->id, $id);
+        // Singletons aren't deleted as entries — there's always exactly one.
+        if ($collection->isSingle() || $this->entries->find($collection->id, $id) === null) {
+            $this->redirect("/admin/collections/{$handle}/entries");
+        }
+        $this->entryService->delete($collection, $id);
         $this->redirect("/admin/collections/{$handle}/entries?msg=deleted");
     }
 
@@ -287,8 +275,8 @@ final class CollectionsController extends Controller
         return ['id' => null, 'title' => '', 'slug' => '', 'status' => 'draft', 'values' => $values];
     }
 
-    /** After a submit: build the form model from request input (normalized). */
-    private function modelFromRequest(Collection $collection, Request $req, ?int $id): array
+    /** Build the typed input object from the request (with normalized values). */
+    private function inputFromRequest(Collection $collection, Request $req): EntryInput
     {
         $posted = $req->all()['f'] ?? [];
         $values = [];
@@ -296,43 +284,18 @@ final class CollectionsController extends Controller
             $raw = is_array($posted) ? ($posted[$field->handle] ?? null) : null;
             $values[$field->handle] = $this->types->get($field->type)->normalize($raw);
         }
-        return [
-            'id'     => $id,
-            'title'  => trim((string) $req->input('title')),
-            'slug'   => trim((string) $req->input('slug')),
-            'status' => in_array($req->input('status'), ['draft', 'published'], true) ? (string) $req->input('status') : 'draft',
-            'values' => $values,
-        ];
+        return new EntryInput(
+            trim((string) $req->input('title')),
+            trim((string) $req->input('slug')),
+            in_array($req->input('status'), ['draft', 'published'], true) ? (string) $req->input('status') : 'draft',
+            $values,
+        );
     }
 
-    /** @return array<string,string> validation errors (title + fields) */
-    private function validate(Collection $collection, array $model): array
+    /** Re-render the form after a failed save, preserving what the user typed. */
+    private function modelFromInput(EntryInput $input, ?int $id): array
     {
-        $errors = (new \Nimbus\Content\Validator($this->types))->validate($collection, $model['values']);
-        if ($model['title'] === '') {
-            $errors['__title'] = 'Title is required.';
-        }
-        return $errors;
-    }
-
-    /** @return array{title:string,slug:string,status:string,data:array<string,mixed>} */
-    private function attrsFromModel(Collection $collection, array $model): array
-    {
-        $title = $model['title'] !== '' ? $model['title'] : 'Untitled';
-        $slug  = Str::slug($model['slug'] !== '' ? $model['slug'] : $title) ?: 'entry';
-        $base  = $slug;
-        $n     = 2;
-        while ($this->entries->slugExists($collection->id, $slug, $model['id'] ?? 0)) {
-            $slug = $base . '-' . $n++;
-        }
-        // Relation values live in nb_relations, so keep them out of the JSON data.
-        $data = [];
-        foreach ($collection->fields as $field) {
-            if ($field->type !== 'relation') {
-                $data[$field->handle] = $model['values'][$field->handle] ?? null;
-            }
-        }
-        return ['title' => $title, 'slug' => $slug, 'status' => $model['status'], 'data' => $data];
+        return ['id' => $id, 'title' => $input->title, 'slug' => $input->slug, 'status' => $input->status, 'values' => $input->values];
     }
 
     /**

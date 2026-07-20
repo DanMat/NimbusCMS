@@ -31,17 +31,19 @@ $heading = $single ? $e($collection->name) : ($editing ? 'Edit' : 'New') . ' · 
 <form class="nb-form-card" method="post" action="<?= $e($action) ?>">
     <input type="hidden" name="_token" value="<?= $e($csrf) ?>">
 
-    <div class="nb-grid-2">
-        <div class="nb-field <?= isset($errors['__title']) ? 'has-error' : '' ?>">
-            <label>Title <span class="nb-req">*</span></label>
-            <input name="title" value="<?= $e($model['title']) ?>" required>
-            <?php if (isset($errors['__title'])): ?><span class="nb-field-error"><?= $e($errors['__title']) ?></span><?php endif; ?>
+    <?php if (!$single): ?>
+        <div class="nb-grid-2">
+            <div class="nb-field <?= isset($errors['__title']) ? 'has-error' : '' ?>">
+                <label>Title <span class="nb-req">*</span></label>
+                <input name="title" value="<?= $e($model['title']) ?>" required>
+                <?php if (isset($errors['__title'])): ?><span class="nb-field-error"><?= $e($errors['__title']) ?></span><?php endif; ?>
+            </div>
+            <div class="nb-field">
+                <label>Slug <small class="nb-muted">(auto from title)</small></label>
+                <input name="slug" value="<?= $e($model['slug']) ?>" placeholder="auto">
+            </div>
         </div>
-        <div class="nb-field">
-            <label>Slug <small class="nb-muted">(auto from title)</small></label>
-            <input name="slug" value="<?= $e($model['slug']) ?>" placeholder="auto">
-        </div>
-    </div>
+    <?php endif; ?>
 
     <?php foreach ($collection->fields as $f): $err = $errors[$f->handle] ?? null; ?>
         <div class="nb-field <?= $err ? 'has-error' : '' ?>">

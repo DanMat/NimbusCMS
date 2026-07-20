@@ -32,14 +32,22 @@ class NumberType extends BaseType
 
     public function normalize(mixed $input): mixed
     {
-        if ($input === null || $input === '' || !is_numeric($input)) {
+        if ($input === null || $input === '') {
             return null;
+        }
+        // Preserve an invalid submission so validation can reject it, rather than
+        // silently erasing it to null (which would look like a blank field).
+        if (!is_numeric($input)) {
+            return $input;
         }
         return str_contains((string) $input, '.') ? (float) $input : (int) $input;
     }
 
     public function validate(Field $field, mixed $value): ?string
     {
-        return is_numeric($value) ? null : 'Enter a valid number.';
+        if ($value === null || $value === '') {
+            return null; // empty handled centrally
+        }
+        return (is_int($value) || is_float($value)) ? null : 'Enter a valid number.';
     }
 }

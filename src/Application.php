@@ -62,8 +62,13 @@ final class Application
                 echo $hit['result'];
             }
         } catch (\Throwable $e) {
-            $message = Config::debug() ? $e->getMessage() : 'An unexpected error occurred.';
-            $this->send($this->notice('Something went wrong', View::e($message)), 500);
+            // Log the full error (with a short reference) but never expose it.
+            $ref = bin2hex(random_bytes(4));
+            error_log("[nimbus {$ref}] " . $e);
+            $message = Config::debug()
+                ? View::e($e->getMessage())
+                : 'An unexpected error occurred. Reference: <code>' . $ref . '</code>';
+            $this->send($this->notice('Something went wrong', $message), 500);
         }
     }
 

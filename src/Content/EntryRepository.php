@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Nimbus\Content;
 
 use Nimbus\Database\Connection;
-use Nimbus\Support\Events;
 
 /**
  * Data access for entries. Field values live in the JSON `data` column; title,
  * slug and status are promoted to real columns for listing and lookups.
- * Mutations fire events so revisions/activity/webhooks can subscribe.
+ * Persistence only — the entry lifecycle (transactions, events) belongs to
+ * EntryService, so events cannot fire before a commit.
  */
 final class EntryRepository
 {
@@ -80,14 +80,12 @@ final class EntryRepository
         $now       = date('Y-m-d H:i:s');
         $published = $attrs['status'] === 'published' ? $now : null;
 
-        $id = $this->db->insert(
+        return $this->db->insert(
             'INSERT INTO nb_entries (collection_id, title, slug, status, data, author_id, published_at, created_at, updated_at)
              VALUES (:c, :t, :sl, :st, :d, :a, :p, :cr, :u)',
             ['c' => $collectionId, 't' => $attrs['title'], 'sl' => $attrs['slug'], 'st' => $attrs['status'],
-             'd' => json_encode($attrs['data']), 'a' => $authorId, 'p' => $published, 'cr' => $now, 'u' => $now]
+             'd' => json_encode($attrs['data'], JSON_THROW_ON_ERROR), 'a' => $authorId, 'p' => $published, 'cr' => $now, 'u' => $now]
         );
-        Events::dispatch('entry.created', ['id' => $id, 'collection_id' => $collectionId] + $attrs);
-        return $id;
     }
 
     /** @param array{title:string,slug:string,status:string,data:array} $attrs */
@@ -103,22 +101,25 @@ final class EntryRepository
         $this->db->execute(
             'UPDATE nb_entries SET title = :t, slug = :sl, status = :st, data = :d, published_at = :p, updated_at = :u
              WHERE collection_id = :c AND id = :id',
-            ['t' => $attrs['title'], 'sl' => $attrs['slug'], 'st' => $attrs['status'], 'd' => json_encode($attrs['data']),
+            ['t' => $attrs['title'], 'sl' => $attrs['slug'], 'st' => $attrs['status'], 'd' => json_encode($attrs['data'], JSON_THROW_ON_ERROR),
              'p' => $published, 'u' => $now, 'c' => $collectionId, 'id' => $id]
         );
-        Events::dispatch('entry.updated', ['id' => $id, 'collection_id' => $collectionId] + $attrs);
     }
 
     public function delete(int $collectionId, int $id): void
     {
         $this->db->execute('DELETE FROM nb_entries WHERE collection_id = :c AND id = :id', ['c' => $collectionId, 'id' => $id]);
-        Events::dispatch('entry.deleted', ['id' => $id, 'collection_id' => $collectionId]);
     }
 
-    /** @param array<string,mixed> $row */
+    /**
+     * @param array<string,mixed> $row
+     * @throws \JsonException when stored JSON is corrupt (never silently emptied)
+     */
     private function hydrate(array $row): array
     {
-        $row['data'] = empty($row['data']) ? [] : (json_decode((string) $row['data'], true) ?: []);
+        $raw = $row['data'] ?? null;
+        $data = ($raw === null || $raw === '') ? [] : json_decode((string) $raw, true, 512, JSON_THROW_ON_ERROR);
+        $row['data'] = is_array($data) ? $data : [];
         return $row;
     }
 }
