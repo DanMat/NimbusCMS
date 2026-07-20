@@ -27,11 +27,12 @@ class TextType extends BaseType
     public function renderInput(Field $field, mixed $value): string
     {
         return sprintf(
-            '<input type="%s" id="%s" name="%s" value="%s"%s>',
+            '<input type="%s" id="%s" name="%s" value="%s"%s%s>',
             $this->htmlType(),
             $this->inputId($field),
             $this->inputName($field),
             $this->e((string) $value),
+            $this->placeholder($field),
             $this->required($field),
         );
     }

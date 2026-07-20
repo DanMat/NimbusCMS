@@ -28,4 +28,10 @@ class DateType extends BaseType
             $this->required($field),
         );
     }
+
+    public function validate(Field $field, mixed $value): ?string
+    {
+        $d = \DateTime::createFromFormat('Y-m-d', (string) $value);
+        return ($d && $d->format('Y-m-d') === (string) $value) ? null : 'Enter a valid date (YYYY-MM-DD).';
+    }
 }

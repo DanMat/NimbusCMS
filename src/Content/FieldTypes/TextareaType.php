@@ -21,9 +21,10 @@ class TextareaType extends BaseType
     public function renderInput(Field $field, mixed $value): string
     {
         return sprintf(
-            '<textarea id="%s" name="%s" rows="5"%s>%s</textarea>',
+            '<textarea id="%s" name="%s" rows="5"%s%s>%s</textarea>',
             $this->inputId($field),
             $this->inputName($field),
+            $this->placeholder($field),
             $this->required($field),
             $this->e((string) $value),
         );

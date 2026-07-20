@@ -42,4 +42,10 @@ class SelectType extends BaseType
             $options,
         );
     }
+
+    public function validate(Field $field, mixed $value): ?string
+    {
+        $choices = array_map('strval', (array) $field->option('choices', []));
+        return in_array((string) $value, $choices, true) ? null : 'Choose one of the available options.';
+    }
 }

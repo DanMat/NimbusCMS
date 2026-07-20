@@ -26,6 +26,16 @@ abstract class BaseType implements FieldType
         return is_scalar($input) ? (string) $input : '';
     }
 
+    public function validate(Field $field, mixed $value): ?string
+    {
+        return null;
+    }
+
+    public function toApi(Field $field, mixed $value): mixed
+    {
+        return $value;
+    }
+
     public function hasChoices(): bool
     {
         return false;
@@ -44,6 +54,12 @@ abstract class BaseType implements FieldType
     protected function required(Field $field): string
     {
         return $field->required ? ' required' : '';
+    }
+
+    protected function placeholder(Field $field): string
+    {
+        $value = (string) $field->option('placeholder', '');
+        return $value !== '' ? ' placeholder="' . $this->e($value) . '"' : '';
     }
 
     protected function e(?string $value): string

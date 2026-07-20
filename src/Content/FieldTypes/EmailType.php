@@ -20,4 +20,9 @@ class EmailType extends TextType
     {
         return 'email';
     }
+
+    public function validate(\Nimbus\Content\Field $field, mixed $value): ?string
+    {
+        return filter_var((string) $value, FILTER_VALIDATE_EMAIL) !== false ? null : 'Enter a valid email address.';
+    }
 }

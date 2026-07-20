@@ -21,19 +21,25 @@ class NumberType extends BaseType
     public function renderInput(Field $field, mixed $value): string
     {
         return sprintf(
-            '<input type="number" step="any" id="%s" name="%s" value="%s"%s>',
+            '<input type="number" step="any" id="%s" name="%s" value="%s"%s%s>',
             $this->inputId($field),
             $this->inputName($field),
             $this->e((string) $value),
+            $this->placeholder($field),
             $this->required($field),
         );
     }
 
     public function normalize(mixed $input): mixed
     {
-        if (!is_numeric($input)) {
+        if ($input === null || $input === '' || !is_numeric($input)) {
             return null;
         }
         return str_contains((string) $input, '.') ? (float) $input : (int) $input;
+    }
+
+    public function validate(Field $field, mixed $value): ?string
+    {
+        return is_numeric($value) ? null : 'Enter a valid number.';
     }
 }

@@ -20,4 +20,9 @@ class UrlType extends TextType
     {
         return 'url';
     }
+
+    public function validate(\Nimbus\Content\Field $field, mixed $value): ?string
+    {
+        return filter_var((string) $value, FILTER_VALIDATE_URL) !== false ? null : 'Enter a valid URL (including https://).';
+    }
 }

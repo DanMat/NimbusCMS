@@ -78,9 +78,14 @@ $manageRoles = $editing ? $collection->managerRoles() : [];
     function wire(row) {
         var type    = row.querySelector('[data-type]');
         var choices = row.querySelector('[data-choices]');
+        var more    = row.querySelector('[data-more]');
         var label   = row.querySelector('[data-label]');
         var handle  = row.querySelector('[data-handle]');
-        function toggle() { choices.hidden = choiceTypes.indexOf(type.value) === -1; }
+        function toggle() {
+            var isChoice = choiceTypes.indexOf(type.value) !== -1;
+            choices.hidden = !isChoice;
+            if (isChoice && more) { more.open = true; }
+        }
         type.addEventListener('change', toggle); toggle();
         row.querySelector('[data-remove]').addEventListener('click', function () { row.remove(); });
         if (label && handle && !handle.readOnly) {

@@ -155,12 +155,7 @@ final class CollectionsController extends Controller
         if ($id !== null && $entry === null) {
             $this->redirect("/admin/collections/{$handle}/entries");
         }
-        return $this->page('entries/form', 'collections', [
-            'collection' => $collection,
-            'entry'      => $entry,
-            'types'      => $this->types,
-            'csrf'       => Csrf::token(),
-        ]);
+        return $this->renderEntryForm($collection, $this->modelFromEntry($collection, $entry), []);
     }
 
     private function entryStore(string $handle): string
@@ -170,8 +165,12 @@ final class CollectionsController extends Controller
         $req = Request::fromGlobals();
         $this->requireCsrf($req);
 
-        $attrs = $this->entryAttrs($collection, $req);
-        $this->entries->create($collection->id, $attrs, $this->auth->user()?->id);
+        $model  = $this->modelFromRequest($collection, $req, null);
+        $errors = $this->validate($collection, $model);
+        if ($errors !== []) {
+            return $this->renderEntryForm($collection, $model, $errors);
+        }
+        $this->entries->create($collection->id, $this->attrsFromModel($collection, $model), $this->auth->user()?->id);
         $this->redirect("/admin/collections/{$handle}/entries?msg=created");
     }
 
@@ -185,7 +184,12 @@ final class CollectionsController extends Controller
         if ($this->entries->find($collection->id, $id) === null) {
             $this->redirect("/admin/collections/{$handle}/entries");
         }
-        $this->entries->update($collection->id, $id, $this->entryAttrs($collection, $req, $id));
+        $model  = $this->modelFromRequest($collection, $req, $id);
+        $errors = $this->validate($collection, $model);
+        if ($errors !== []) {
+            return $this->renderEntryForm($collection, $model, $errors);
+        }
+        $this->entries->update($collection->id, $id, $this->attrsFromModel($collection, $model));
         $this->redirect("/admin/collections/{$handle}/entries?msg=updated");
     }
 
@@ -200,27 +204,75 @@ final class CollectionsController extends Controller
 
     // =============================================================== helpers
 
-    /** @return array{title:string,slug:string,status:string,data:array<string,mixed>} */
-    private function entryAttrs(Collection $collection, Request $req, int $exceptId = 0): array
+    private function renderEntryForm(Collection $collection, array $model, array $errors): string
     {
-        $title  = trim((string) $req->input('title')) ?: 'Untitled';
-        $status = in_array($req->input('status'), ['draft', 'published'], true) ? (string) $req->input('status') : 'draft';
+        return $this->page('entries/form', 'collections', [
+            'collection' => $collection,
+            'model'      => $model,
+            'errors'     => $errors,
+            'types'      => $this->types,
+            'csrf'       => Csrf::token(),
+        ]);
+    }
 
-        $slug = Str::slug($req->input('slug') ?: $title) ?: 'entry';
-        $base = $slug;
-        $n    = 2;
-        while ($this->entries->slugExists($collection->id, $slug, $exceptId)) {
-            $slug = $base . '-' . $n++;
+    /** Editing/new: build the form model from a stored entry (or field defaults). */
+    private function modelFromEntry(Collection $collection, ?array $entry): array
+    {
+        if ($entry !== null) {
+            return [
+                'id'     => (int) $entry['id'],
+                'title'  => (string) $entry['title'],
+                'slug'   => (string) $entry['slug'],
+                'status' => (string) $entry['status'],
+                'values' => is_array($entry['data']) ? $entry['data'] : [],
+            ];
         }
+        $values = [];
+        foreach ($collection->fields as $field) {
+            $values[$field->handle] = $field->option('default', '');
+        }
+        return ['id' => null, 'title' => '', 'slug' => '', 'status' => 'draft', 'values' => $values];
+    }
 
+    /** After a submit: build the form model from request input (normalized). */
+    private function modelFromRequest(Collection $collection, Request $req, ?int $id): array
+    {
         $posted = $req->all()['f'] ?? [];
-        $data   = [];
+        $values = [];
         foreach ($collection->fields as $field) {
             $raw = is_array($posted) ? ($posted[$field->handle] ?? null) : null;
-            $data[$field->handle] = $this->types->get($field->type)->normalize($raw);
+            $values[$field->handle] = $this->types->get($field->type)->normalize($raw);
         }
+        return [
+            'id'     => $id,
+            'title'  => trim((string) $req->input('title')),
+            'slug'   => trim((string) $req->input('slug')),
+            'status' => in_array($req->input('status'), ['draft', 'published'], true) ? (string) $req->input('status') : 'draft',
+            'values' => $values,
+        ];
+    }
 
-        return ['title' => $title, 'slug' => $slug, 'status' => $status, 'data' => $data];
+    /** @return array<string,string> validation errors (title + fields) */
+    private function validate(Collection $collection, array $model): array
+    {
+        $errors = (new \Nimbus\Content\Validator($this->types))->validate($collection, $model['values']);
+        if ($model['title'] === '') {
+            $errors['__title'] = 'Title is required.';
+        }
+        return $errors;
+    }
+
+    /** @return array{title:string,slug:string,status:string,data:array<string,mixed>} */
+    private function attrsFromModel(Collection $collection, array $model): array
+    {
+        $title = $model['title'] !== '' ? $model['title'] : 'Untitled';
+        $slug  = Str::slug($model['slug'] !== '' ? $model['slug'] : $title) ?: 'entry';
+        $base  = $slug;
+        $n     = 2;
+        while ($this->entries->slugExists($collection->id, $slug, $model['id'] ?? 0)) {
+            $slug = $base . '-' . $n++;
+        }
+        return ['title' => $title, 'slug' => $slug, 'status' => $model['status'], 'data' => $model['values']];
     }
 
     /**
@@ -250,6 +302,12 @@ final class CollectionsController extends Controller
                 $choices = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) ($row['choices'] ?? '')) ?: [])));
                 if ($choices !== []) {
                     $options['choices'] = $choices;
+                }
+            }
+            foreach (['default', 'placeholder', 'help'] as $opt) {
+                $val = trim((string) ($row[$opt] ?? ''));
+                if ($val !== '') {
+                    $options[$opt] = $val;
                 }
             }
             $defs[] = ['handle' => $handle, 'label' => $label, 'type' => $type, 'required' => !empty($row['required']), 'options' => $options];

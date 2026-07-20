@@ -11,6 +11,9 @@ $label    = $f?->label ?? '';
 $type     = $f?->type ?? 'text';
 $required = $f?->required ?? false;
 $choices  = $f ? implode("\n", (array) $f->option('choices', [])) : '';
+$default  = $f ? (string) $f->option('default', '') : '';
+$holder   = $f ? (string) $f->option('placeholder', '') : '';
+$help     = $f ? (string) $f->option('help', '') : '';
 $name     = 'fields[' . $i . ']';
 ?>
 <div class="nb-field-row" data-row>
@@ -25,5 +28,13 @@ $name     = 'fields[' . $i . ']';
         <label class="nb-check nb-fr-req"><input type="checkbox" name="<?= $e($name) ?>[required]" value="1" <?= $required ? 'checked' : '' ?>> Req.</label>
         <button type="button" class="nb-fr-remove" data-remove title="Remove field">✕</button>
     </div>
-    <textarea class="nb-fr-choices" name="<?= $e($name) ?>[choices]" placeholder="One choice per line" data-choices <?= in_array($type, $choiceTypes, true) ? '' : 'hidden' ?>><?= $e($choices) ?></textarea>
+    <details class="nb-fr-more" data-more>
+        <summary>Options</summary>
+        <div class="nb-fr-opts">
+            <input name="<?= $e($name) ?>[default]" placeholder="Default value" value="<?= $e($default) ?>">
+            <input name="<?= $e($name) ?>[placeholder]" placeholder="Placeholder" value="<?= $e($holder) ?>">
+            <input name="<?= $e($name) ?>[help]" placeholder="Help text" value="<?= $e($help) ?>">
+            <textarea name="<?= $e($name) ?>[choices]" placeholder="One choice per line" data-choices <?= in_array($type, $choiceTypes, true) ? '' : 'hidden' ?>><?= $e($choices) ?></textarea>
+        </div>
+    </details>
 </div>
