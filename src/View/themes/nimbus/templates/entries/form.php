@@ -48,7 +48,26 @@ $heading = $single ? $e($collection->name) : ($editing ? 'Edit' : 'New') . ' · 
             <?php if ($f->type !== 'boolean'): ?>
                 <label for="f_<?= $e($f->handle) ?>"><?= $e($f->label) ?><?= $f->required ? ' <span class="nb-req">*</span>' : '' ?></label>
             <?php endif; ?>
-            <?= $types->get($f->type)->renderInput($f, $model['values'][$f->handle] ?? '') ?>
+
+            <?php if ($f->type === 'relation'):
+                $opts     = $relationOptions[$f->handle] ?? [];
+                $selected = array_map('intval', (array) ($model['values'][$f->handle] ?? []));
+                $multiple = (bool) $f->option('multiple', false);
+            ?>
+                <?php if ($opts === []): ?>
+                    <p class="nb-help">No <?= $e((string) $f->option('target', 'target')) ?> entries to link yet.</p>
+                <?php else: ?>
+                    <select id="f_<?= $e($f->handle) ?>" name="f[<?= $e($f->handle) ?>]<?= $multiple ? '[]' : '' ?>" <?= $multiple ? 'multiple size="5"' : '' ?>>
+                        <?php if (!$multiple): ?><option value="">—</option><?php endif; ?>
+                        <?php foreach ($opts as $oid => $otitle): ?>
+                            <option value="<?= (int) $oid ?>" <?= in_array((int) $oid, $selected, true) ? 'selected' : '' ?>><?= $e($otitle) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                <?php endif; ?>
+            <?php else: ?>
+                <?= $types->get($f->type)->renderInput($f, $model['values'][$f->handle] ?? '') ?>
+            <?php endif; ?>
+
             <?php if ((string) $f->option('help', '') !== ''): ?><span class="nb-help"><?= $e((string) $f->option('help')) ?></span><?php endif; ?>
             <?php if ($err): ?><span class="nb-field-error"><?= $e($err) ?></span><?php endif; ?>
         </div>

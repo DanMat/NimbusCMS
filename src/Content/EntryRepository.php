@@ -32,6 +32,20 @@ final class EntryRepository
         return array_map([$this, 'hydrate'], $this->db->select($sql, $params));
     }
 
+    /**
+     * id => title for a collection's entries (for relation pickers).
+     *
+     * @return array<int,string>
+     */
+    public function titleMap(int $collectionId): array
+    {
+        $out = [];
+        foreach ($this->db->select('SELECT id, title FROM nb_entries WHERE collection_id = :c ORDER BY title', ['c' => $collectionId]) as $r) {
+            $out[(int) $r['id']] = (string) $r['title'];
+        }
+        return $out;
+    }
+
     /** The single entry of a collection (for singletons), or null. */
     public function firstForCollection(int $collectionId): ?array
     {

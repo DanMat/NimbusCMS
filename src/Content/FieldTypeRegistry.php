@@ -8,6 +8,7 @@ use Nimbus\Content\FieldTypes\BooleanType;
 use Nimbus\Content\FieldTypes\DateType;
 use Nimbus\Content\FieldTypes\EmailType;
 use Nimbus\Content\FieldTypes\NumberType;
+use Nimbus\Content\FieldTypes\RelationType;
 use Nimbus\Content\FieldTypes\SelectType;
 use Nimbus\Content\FieldTypes\TextareaType;
 use Nimbus\Content\FieldTypes\TextType;
@@ -34,6 +35,7 @@ final class FieldTypeRegistry
             new DateType(),
             new EmailType(),
             new UrlType(),
+            new RelationType(),
         ] as $type) {
             $this->register($type);
         }

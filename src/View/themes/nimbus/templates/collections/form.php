@@ -76,7 +76,8 @@ $manageRoles = $editing ? $collection->managerRoles() : [];
 
 <script>
 (function () {
-    var choiceTypes = <?= json_encode($choiceTypes) ?>;
+    var choiceTypes   = <?= json_encode($choiceTypes) ?>;
+    var relationTypes = <?= json_encode($relationTypes) ?>;
     var list = document.getElementById('nb-fields');
     var tpl  = document.getElementById('nb-field-template');
     var next = 1000;
@@ -84,15 +85,18 @@ $manageRoles = $editing ? $collection->managerRoles() : [];
     function slugify(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''); }
 
     function wire(row) {
-        var type    = row.querySelector('[data-type]');
-        var choices = row.querySelector('[data-choices]');
-        var more    = row.querySelector('[data-more]');
-        var label   = row.querySelector('[data-label]');
-        var handle  = row.querySelector('[data-handle]');
+        var type     = row.querySelector('[data-type]');
+        var choices  = row.querySelector('[data-choices]');
+        var relation = row.querySelector('[data-relation]');
+        var more     = row.querySelector('[data-more]');
+        var label    = row.querySelector('[data-label]');
+        var handle   = row.querySelector('[data-handle]');
         function toggle() {
             var isChoice = choiceTypes.indexOf(type.value) !== -1;
+            var isRel    = relationTypes.indexOf(type.value) !== -1;
             choices.hidden = !isChoice;
-            if (isChoice && more) { more.open = true; }
+            if (relation) { relation.hidden = !isRel; }
+            if ((isChoice || isRel) && more) { more.open = true; }
         }
         type.addEventListener('change', toggle); toggle();
         row.querySelector('[data-remove]').addEventListener('click', function () { row.remove(); });

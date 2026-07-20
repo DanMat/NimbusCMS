@@ -9,6 +9,7 @@ use Nimbus\Content\CollectionRepository;
 use Nimbus\Content\EntryRepository;
 use Nimbus\Content\FieldTypeRegistry;
 use Nimbus\Content\Permissions;
+use Nimbus\Content\RelationRepository;
 use Nimbus\Http\Csrf;
 use Nimbus\Http\Request;
 use Nimbus\Http\Router;
@@ -23,12 +24,14 @@ final class CollectionsController extends Controller
 {
     private CollectionRepository $collections;
     private EntryRepository $entries;
+    private RelationRepository $relations;
     private FieldTypeRegistry $types;
 
     public function boot(): void
     {
         $this->collections = new CollectionRepository($this->db);
         $this->entries     = new EntryRepository($this->db);
+        $this->relations   = new RelationRepository($this->db);
         $this->types       = new FieldTypeRegistry();
     }
 
@@ -80,12 +83,18 @@ final class CollectionsController extends Controller
         if ($id !== null && $collection === null) {
             $this->redirect('/admin/collections');
         }
+        $collectionOptions = [];
+        foreach ($this->collections->all() as $c) {
+            $collectionOptions[$c->handle] = $c->name;
+        }
         return $this->page('collections/form', 'collections', [
-            'collection' => $collection,
-            'typeChoices' => $this->types->choices(),
-            'choiceTypes' => $this->choiceTypes(),
-            'roles'      => Permissions::ROLES,
-            'csrf'       => Csrf::token(),
+            'collection'        => $collection,
+            'typeChoices'       => $this->types->choices(),
+            'choiceTypes'       => $this->choiceTypes(),
+            'relationTypes'     => ['relation'],
+            'collectionOptions' => $collectionOptions,
+            'roles'             => Permissions::ROLES,
+            'csrf'              => Csrf::token(),
         ]);
     }
 
@@ -205,11 +214,18 @@ final class CollectionsController extends Controller
         }
         $attrs = $this->attrsFromModel($collection, $model);
         if ($id === null) {
-            $this->entries->create($collection->id, $attrs, $this->auth->user()?->id);
+            $id  = $this->entries->create($collection->id, $attrs, $this->auth->user()?->id);
             $msg = 'created';
         } else {
             $this->entries->update($collection->id, $id, $attrs);
             $msg = $collection->isSingle() ? 'saved' : 'updated';
+        }
+        // Relation fields are stored in nb_relations, not the entry JSON.
+        foreach ($collection->fields as $field) {
+            if ($field->type === 'relation') {
+                $ids = is_array($model['values'][$field->handle] ?? null) ? $model['values'][$field->handle] : [];
+                $this->relations->sync($id, $field->id, $ids);
+            }
         }
         $this->redirect("/admin/collections/{$collection->handle}/entries?msg={$msg}");
     }
@@ -227,13 +243,22 @@ final class CollectionsController extends Controller
 
     private function renderEntryForm(Collection $collection, array $model, array $errors, ?string $flash = null): string
     {
+        // Relation pickers need their target collection's entries (id => title).
+        $relationOptions = [];
+        foreach ($collection->fields as $field) {
+            if ($field->type === 'relation') {
+                $target = (string) $field->option('target', '') !== '' ? $this->collections->findByHandle((string) $field->option('target')) : null;
+                $relationOptions[$field->handle] = $target !== null ? $this->entries->titleMap($target->id) : [];
+            }
+        }
         return $this->page('entries/form', 'collections', [
-            'collection' => $collection,
-            'model'      => $model,
-            'errors'     => $errors,
-            'flash'      => $flash,
-            'types'      => $this->types,
-            'csrf'       => Csrf::token(),
+            'collection'      => $collection,
+            'model'           => $model,
+            'errors'          => $errors,
+            'flash'           => $flash,
+            'types'           => $this->types,
+            'relationOptions' => $relationOptions,
+            'csrf'            => Csrf::token(),
         ]);
     }
 
@@ -241,17 +266,23 @@ final class CollectionsController extends Controller
     private function modelFromEntry(Collection $collection, ?array $entry): array
     {
         if ($entry !== null) {
+            $values = is_array($entry['data']) ? $entry['data'] : [];
+            foreach ($collection->fields as $field) {
+                if ($field->type === 'relation') {
+                    $values[$field->handle] = $this->relations->targets((int) $entry['id'], $field->id);
+                }
+            }
             return [
                 'id'     => (int) $entry['id'],
                 'title'  => (string) $entry['title'],
                 'slug'   => (string) $entry['slug'],
                 'status' => (string) $entry['status'],
-                'values' => is_array($entry['data']) ? $entry['data'] : [],
+                'values' => $values,
             ];
         }
         $values = [];
         foreach ($collection->fields as $field) {
-            $values[$field->handle] = $field->option('default', '');
+            $values[$field->handle] = $field->type === 'relation' ? [] : $field->option('default', '');
         }
         return ['id' => null, 'title' => '', 'slug' => '', 'status' => 'draft', 'values' => $values];
     }
@@ -294,7 +325,14 @@ final class CollectionsController extends Controller
         while ($this->entries->slugExists($collection->id, $slug, $model['id'] ?? 0)) {
             $slug = $base . '-' . $n++;
         }
-        return ['title' => $title, 'slug' => $slug, 'status' => $model['status'], 'data' => $model['values']];
+        // Relation values live in nb_relations, so keep them out of the JSON data.
+        $data = [];
+        foreach ($collection->fields as $field) {
+            if ($field->type !== 'relation') {
+                $data[$field->handle] = $model['values'][$field->handle] ?? null;
+            }
+        }
+        return ['title' => $title, 'slug' => $slug, 'status' => $model['status'], 'data' => $data];
     }
 
     /**
@@ -331,6 +369,10 @@ final class CollectionsController extends Controller
                 if ($val !== '') {
                     $options[$opt] = $val;
                 }
+            }
+            if ($type === 'relation') {
+                $options['target']   = trim((string) ($row['target'] ?? ''));
+                $options['multiple'] = !empty($row['multiple']);
             }
             $defs[] = ['handle' => $handle, 'label' => $label, 'type' => $type, 'required' => !empty($row['required']), 'options' => $options];
         }
