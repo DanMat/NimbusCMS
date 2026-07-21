@@ -47,7 +47,7 @@ No tagged release, no upgrade path between versions, no password reset, no backu
 ## Quick start
 
 ```bash
-git clone https://github.com/DanMat/NimbusCMS.git && cd NimbusCMS
+git clone https://github.com/NimbusCMS/nimbus.git && cd nimbus
 cp .env.example .env
 docker compose up -d --build          # app :8080 · adminer :8081 · mysql :3307
 docker compose exec app php bin/nimbus install

@@ -1,5 +1,5 @@
 {
-    "name": "danmat/nimbus-cms",
+    "name": "nimbuscms/nimbus",
     "description": "NimbusCMS — a modern, lightweight PHP CMS: collections, media library, a headless JSON API, and a themeable admin + public site.",
     "type": "project",
     "keywords": ["cms", "php", "headless", "collections", "media-library", "lightweight"],
