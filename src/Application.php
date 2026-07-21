@@ -36,8 +36,10 @@ final class Application
 
     public function run(): void
     {
-        $this->startSession();
-        SecurityHeaders::apply($this->handle(Request::fromGlobals()))->send();
+        // The one place globals are read. Everything downstream shares this instance.
+        $request = Request::fromGlobals();
+        $this->startSession($request->isSecure());
+        SecurityHeaders::apply($this->handle($request))->send();
     }
 
     private function handle(Request $request): Response
@@ -53,7 +55,7 @@ final class Application
             $router = new Router();
             (new AdminController($this->db, $this->auth))->routes($router);
             (new CollectionsController($this->db, $this->auth))->routes($router);
-            $router->get('/', fn (): Response => $this->home());
+            $router->get('/', fn (Request $req, array $p): Response => $this->home());
 
             return $router->dispatch($request)
                 ?? $this->notice('Not found', 'Nothing lives at <code>' . View::e($request->path) . '</code>.', 404);
@@ -71,14 +73,11 @@ final class Application
     }
 
     /** Start the session with secure cookie defaults set BEFORE session_start(). */
-    private function startSession(): void
+    private function startSession(bool $https): void
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
             return;
         }
-        $https = ($_SERVER['HTTPS'] ?? '') === 'on'
-            || ($_SERVER['SERVER_PORT'] ?? '') === '443'
-            || strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
 
         ini_set('session.use_strict_mode', '1');
         ini_set('session.use_only_cookies', '1');

@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace Nimbus\Http;
 
+use Nimbus\Support\Config;
+
 /** Read-only view over the current request. */
 final class Request
 {
+    private TrustedProxies $proxies;
+
     public function __construct(
         public readonly string $method,
         public readonly string $path,
@@ -14,7 +18,9 @@ final class Request
         private array $post,
         private array $server,
         private array $files,
+        ?TrustedProxies $proxies = null,
     ) {
+        $this->proxies = $proxies ?? new TrustedProxies();
     }
 
     public static function fromGlobals(): self
@@ -28,6 +34,7 @@ final class Request
             $_POST,
             $_SERVER,
             $_FILES,
+            TrustedProxies::fromString(Config::trustedProxies()),
         );
     }
 
@@ -59,12 +66,54 @@ final class Request
     }
 
     /**
-     * Client IP for throttling. Uses REMOTE_ADDR only — X-Forwarded-For is
-     * spoofable, so trusting it needs explicit trusted-proxy config (roadmap).
+     * The client IP, used for throttling.
+     *
+     * X-Forwarded-For is spoofable by anyone, so it counts only when the
+     * immediate peer is a configured trusted proxy. In that case we walk the
+     * chain right-to-left and take the first hop we don't recognise: the
+     * rightmost entries were appended by our own infrastructure, and anything
+     * further left may have been forged by the client.
      */
     public function ip(): string
     {
-        return (string) ($this->server['REMOTE_ADDR'] ?? '0.0.0.0');
+        $remote = (string) ($this->server['REMOTE_ADDR'] ?? '0.0.0.0');
+        if (!$this->proxies->trusts($remote)) {
+            return $remote;
+        }
+
+        $chain = array_reverse(array_filter(array_map('trim', explode(',', (string) $this->header('X-Forwarded-For')))));
+        foreach ($chain as $hop) {
+            $hop = self::stripPort($hop);
+            if ($hop !== '' && !$this->proxies->trusts($hop)) {
+                return $hop;
+            }
+        }
+        return $remote;
+    }
+
+    /** Whether the *original* request was over HTTPS. Drives the session cookie's secure flag. */
+    public function isSecure(): bool
+    {
+        $https = strtolower((string) ($this->server['HTTPS'] ?? ''));
+        if ($https !== '' && $https !== 'off') {
+            return true;
+        }
+        if ((string) ($this->server['SERVER_PORT'] ?? '') === '443') {
+            return true;
+        }
+        if ($this->proxies->trusts((string) ($this->server['REMOTE_ADDR'] ?? ''))) {
+            return strtolower((string) $this->header('X-Forwarded-Proto')) === 'https';
+        }
+        return false;
+    }
+
+    /** `1.2.3.4:5678` -> `1.2.3.4`; IPv6 (which is colon-heavy) is left alone unless bracketed. */
+    private static function stripPort(string $hop): string
+    {
+        if (str_starts_with($hop, '[')) {
+            return (string) strstr(ltrim($hop, '['), ']', true);
+        }
+        return substr_count($hop, ':') === 1 ? (string) strstr($hop, ':', true) : $hop;
     }
 
     public function bearerToken(): ?string
