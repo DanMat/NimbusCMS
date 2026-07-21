@@ -34,6 +34,15 @@ final class Config
         return Env::bool('APP_DEBUG', false);
     }
 
+    /**
+     * Comma-separated IPs/CIDRs allowed to set X-Forwarded-*. Empty (default)
+     * means forwarded headers are ignored — see Http\TrustedProxies.
+     */
+    public static function trustedProxies(): string
+    {
+        return (string) Env::get('TRUSTED_PROXIES', '');
+    }
+
     /** Filesystem directory (relative to project root) where uploads are written. */
     public static function uploadDir(): string
     {
