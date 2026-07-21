@@ -6,6 +6,8 @@ namespace Nimbus\Admin;
 
 use Nimbus\Auth\Auth;
 use Nimbus\Database\Connection;
+use Nimbus\Http\HttpException;
+use Nimbus\Http\Response;
 use Nimbus\Support\Config;
 use Nimbus\View\View;
 
@@ -41,21 +43,32 @@ abstract class Controller
     }
 
     /** Render a template inside the admin shell. */
-    protected function page(string $template, string $navActive, array $data = []): string
+    protected function page(string $template, string $navActive, array $data = []): Response
     {
-        return $this->view->render($template, ['nav' => $this->nav($navActive)] + $data);
+        return Response::html($this->view->render($template, ['nav' => $this->nav($navActive)] + $data));
+    }
+
+    /** Render a template with no shell (login, standalone pages). */
+    protected function bare(string $template, array $data = []): Response
+    {
+        return Response::html($this->view->renderBare($template, $data));
+    }
+
+    protected function redirect(string $to): Response
+    {
+        return Response::redirect($to);
+    }
+
+    /** Short-circuit the current action with a redirect (throws; caught by the kernel). */
+    protected function abortTo(string $to): never
+    {
+        throw HttpException::redirect($to);
     }
 
     protected function guard(): void
     {
         if (!$this->auth->check()) {
-            $this->redirect('/admin/login');
+            $this->abortTo('/admin/login');
         }
-    }
-
-    protected function redirect(string $to): never
-    {
-        header('Location: ' . $to);
-        exit;
     }
 }
