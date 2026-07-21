@@ -97,7 +97,7 @@ field never means an `ALTER TABLE`.
 - [x] Collections & fields + entry CRUD — field-type registry, relations, singletons, per-collection role permissions, post-commit events
 - [x] Hardened HTTP core — `Response` object, middleware-gated routes, CSP + security headers, login throttling, trusted proxies
 - [x] Test & analysis baseline — unit, integration and HTTP-functional suites, PHPStan level 6, install + CRUD smoke test, all on CI
-- [ ] Plugin system (`Plugin` interface + `PluginContext`)
+- [ ] Plugin system — first contract designed in [ADR 0001](docs/adr/0001-plugin-contract.md); one reference plugin next
 - [ ] Media library
 - [ ] Headless JSON API + tokens
 - [ ] Rich-text / Markdown editor
@@ -106,6 +106,7 @@ field never means an `ALTER TABLE`.
 
 The full, continuously audited plan lives in [ROADMAP.md](ROADMAP.md), where
 `[x]` means *verified by CI* — not merely *present in the repository*.
+Architecture decisions are recorded in [docs/adr](docs/adr).
 
 ## Development
 
