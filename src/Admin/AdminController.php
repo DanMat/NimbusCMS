@@ -6,6 +6,7 @@ namespace Nimbus\Admin;
 
 use Nimbus\Http\Csrf;
 use Nimbus\Http\Request;
+use Nimbus\Http\Response;
 use Nimbus\Http\Router;
 
 /**
@@ -17,45 +18,44 @@ final class AdminController extends Controller
 {
     public function routes(Router $r): void
     {
-        $r->get('/admin/login', fn (): string => $this->loginForm());
-        $r->post('/admin/login', fn (): string => $this->login());
-        $r->post('/admin/logout', fn (): string => $this->logout());
-        $r->get('/admin', fn (): string => $this->dashboardPage());
-        $r->get('/admin/dashboard', fn (): string => $this->dashboardPage());
+        $r->get('/admin/login', fn (): Response => $this->loginForm());
+        $r->post('/admin/login', fn (): Response => $this->login());
+        $r->post('/admin/logout', fn (): Response => $this->logout());
+        $r->get('/admin', fn (): Response => $this->dashboardPage());
+        $r->get('/admin/dashboard', fn (): Response => $this->dashboardPage());
 
         foreach (['media', 'users', 'settings'] as $section) {
-            $r->get("/admin/{$section}", function () use ($section): string {
+            $r->get("/admin/{$section}", function () use ($section): Response {
                 $this->guard();
                 return $this->page('stub', $section, ['title' => ucfirst($section)]);
             });
         }
     }
 
-    private function loginForm(?string $error = null): string
+    private function loginForm(?string $error = null): Response
     {
         if ($this->auth->check()) {
-            $this->redirect('/admin');
+            return $this->redirect('/admin');
         }
-        return $this->view->renderBare('login', ['error' => $error, 'csrf' => Csrf::token()]);
+        return $this->bare('login', ['error' => $error, 'csrf' => Csrf::token()]);
     }
 
-    private function login(): string
+    private function login(): Response
     {
         $req = Request::fromGlobals();
         if (!Csrf::check($req->input('_token'))) {
             return $this->loginForm('Your session expired. Please try again.');
         }
         if ($this->auth->attempt((string) $req->input('email'), (string) $req->input('password'))) {
-            $this->redirect('/admin');
+            return $this->redirect('/admin');
         }
         return $this->loginForm('Invalid email or password.');
     }
 
-    private function logout(): string
+    private function logout(): Response
     {
         if (Csrf::check(Request::fromGlobals()->input('_token'))) {
             $this->auth->logout();
-            // Fully destroy the session + its cookie.
             $_SESSION = [];
             if (ini_get('session.use_cookies')) {
                 $p = session_get_cookie_params();
@@ -63,10 +63,10 @@ final class AdminController extends Controller
             }
             session_destroy();
         }
-        $this->redirect('/admin/login');
+        return $this->redirect('/admin/login');
     }
 
-    private function dashboardPage(): string
+    private function dashboardPage(): Response
     {
         $this->guard();
         return $this->page('dashboard', 'dashboard', [

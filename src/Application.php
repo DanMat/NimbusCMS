@@ -8,16 +8,18 @@ use Nimbus\Admin\AdminController;
 use Nimbus\Admin\CollectionsController;
 use Nimbus\Auth\Auth;
 use Nimbus\Database\Connection;
+use Nimbus\Http\HttpException;
 use Nimbus\Http\Request;
+use Nimbus\Http\Response;
 use Nimbus\Http\Router;
 use Nimbus\Support\Config;
 use Nimbus\Support\Env;
 use Nimbus\View\View;
 
 /**
- * The HTTP kernel. Boots config + database, then routes the request across the
- * admin, API and public-site areas. Handlers return HTML strings (echoed) or
- * redirect/exit themselves.
+ * The HTTP kernel. Boots config + database, routes the request, and sends the
+ * single Response that comes back. Handlers return a Response; auth/permission
+ * short-circuits throw HttpException (caught here).
  */
 final class Application
 {
@@ -34,31 +36,31 @@ final class Application
     public function run(): void
     {
         $this->startSession();
-        $request = Request::fromGlobals();
+        $this->handle(Request::fromGlobals())->send();
+    }
 
+    private function handle(Request $request): Response
+    {
         try {
             if (!$this->db->isReady()) {
-                $this->send($this->notice('Database unavailable', 'NimbusCMS can’t reach the database. Check your <code>.env</code> or Docker stack.'), 503);
-                return;
+                return $this->notice('Database unavailable', 'NimbusCMS can’t reach the database. Check your <code>.env</code> or Docker stack.', 503);
             }
             if (!$this->db->tableExists('nb_users')) {
-                $this->send($this->notice('Not installed yet', 'Run <code>php bin/nimbus install</code> to conjure the schema and your first user.'), 503);
-                return;
+                return $this->notice('Not installed yet', 'Run <code>php bin/nimbus install</code> to conjure the schema and your first user.', 503);
             }
 
             $router = new Router();
             (new AdminController($this->db, $this->auth))->routes($router);
             (new CollectionsController($this->db, $this->auth))->routes($router);
-            $router->get('/', fn (): string => $this->home());
+            $router->get('/', fn (): Response => $this->home());
 
             $hit = $router->dispatch($request->method, $request->path);
             if ($hit === null) {
-                $this->send($this->notice('Not found', 'Nothing lives at <code>' . View::e($request->path) . '</code>.'), 404);
-                return;
+                return $this->notice('Not found', 'Nothing lives at <code>' . View::e($request->path) . '</code>.', 404);
             }
-            if (is_string($hit['result'])) {
-                echo $hit['result'];
-            }
+            return $hit['result'];
+        } catch (HttpException $e) {
+            return $e->response;
         } catch (\Throwable $e) {
             // Log the full error (with a short reference) but never expose it.
             $ref = bin2hex(random_bytes(4));
@@ -66,7 +68,7 @@ final class Application
             $message = Config::debug()
                 ? View::e($e->getMessage())
                 : 'An unexpected error occurred. Reference: <code>' . $ref . '</code>';
-            $this->send($this->notice('Something went wrong', $message), 500);
+            return $this->notice('Something went wrong', $message, 500);
         }
     }
 
@@ -93,7 +95,7 @@ final class Application
         session_start();
     }
 
-    private function home(): string
+    private function home(): Response
     {
         return $this->notice(
             Config::appName(),
@@ -101,17 +103,14 @@ final class Application
         );
     }
 
-    private function notice(string $title, string $html): string
+    private function notice(string $title, string $html, int $status = 200): Response
     {
         $t = View::e($title);
-        return "<!doctype html><meta charset=\"utf-8\"><title>{$t}</title>"
+        return Response::html(
+            "<!doctype html><meta charset=\"utf-8\"><title>{$t}</title>"
             . '<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;margin:14vh auto;padding:0 24px;color:#1e2330">'
-            . "<h1 style=\"letter-spacing:-.02em\">{$t}</h1><p style=\"color:#6b7280;line-height:1.6\">{$html}</p></div>";
-    }
-
-    private function send(string $html, int $status): void
-    {
-        http_response_code($status);
-        echo $html;
+            . "<h1 style=\"letter-spacing:-.02em\">{$t}</h1><p style=\"color:#6b7280;line-height:1.6\">{$html}</p></div>",
+            $status
+        );
     }
 }

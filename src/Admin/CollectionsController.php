@@ -15,6 +15,7 @@ use Nimbus\Content\Permissions;
 use Nimbus\Content\RelationRepository;
 use Nimbus\Http\Csrf;
 use Nimbus\Http\Request;
+use Nimbus\Http\Response;
 use Nimbus\Http\Router;
 use Nimbus\Support\Str;
 
@@ -47,25 +48,25 @@ final class CollectionsController extends Controller
         $this->boot();
 
         // ---- collections (structural: admin only) ----
-        $r->get('/admin/collections', fn (): string => $this->index());
-        $r->get('/admin/collections/new', fn (): string => $this->form(null));
-        $r->post('/admin/collections', fn (): string => $this->store());
-        $r->get('/admin/collections/{id}/edit', fn (array $p): string => $this->form((int) $p['id']));
-        $r->post('/admin/collections/{id}', fn (array $p): string => $this->update((int) $p['id']));
-        $r->post('/admin/collections/{id}/delete', fn (array $p): string => $this->destroy((int) $p['id']));
+        $r->get('/admin/collections', fn (): Response => $this->index());
+        $r->get('/admin/collections/new', fn (): Response => $this->form(null));
+        $r->post('/admin/collections', fn (): Response => $this->store());
+        $r->get('/admin/collections/{id}/edit', fn (array $p): Response => $this->form((int) $p['id']));
+        $r->post('/admin/collections/{id}', fn (array $p): Response => $this->update((int) $p['id']));
+        $r->post('/admin/collections/{id}/delete', fn (array $p): Response => $this->destroy((int) $p['id']));
 
         // ---- entries ----
-        $r->get('/admin/collections/{handle}/entries', fn (array $p): string => $this->entriesIndex($p['handle']));
-        $r->get('/admin/collections/{handle}/entries/new', fn (array $p): string => $this->entryForm($p['handle'], null));
-        $r->post('/admin/collections/{handle}/entries', fn (array $p): string => $this->entryStore($p['handle']));
-        $r->get('/admin/collections/{handle}/entries/{id}/edit', fn (array $p): string => $this->entryForm($p['handle'], (int) $p['id']));
-        $r->post('/admin/collections/{handle}/entries/{id}', fn (array $p): string => $this->entryUpdate($p['handle'], (int) $p['id']));
-        $r->post('/admin/collections/{handle}/entries/{id}/delete', fn (array $p): string => $this->entryDestroy($p['handle'], (int) $p['id']));
+        $r->get('/admin/collections/{handle}/entries', fn (array $p): Response => $this->entriesIndex($p['handle']));
+        $r->get('/admin/collections/{handle}/entries/new', fn (array $p): Response => $this->entryForm($p['handle'], null));
+        $r->post('/admin/collections/{handle}/entries', fn (array $p): Response => $this->entryStore($p['handle']));
+        $r->get('/admin/collections/{handle}/entries/{id}/edit', fn (array $p): Response => $this->entryForm($p['handle'], (int) $p['id']));
+        $r->post('/admin/collections/{handle}/entries/{id}', fn (array $p): Response => $this->entryUpdate($p['handle'], (int) $p['id']));
+        $r->post('/admin/collections/{handle}/entries/{id}/delete', fn (array $p): Response => $this->entryDestroy($p['handle'], (int) $p['id']));
     }
 
     // =========================================================== collections
 
-    private function index(): string
+    private function index(): Response
     {
         $this->guard();
         $rows = [];
@@ -83,12 +84,12 @@ final class CollectionsController extends Controller
         ]);
     }
 
-    private function form(?int $id): string
+    private function form(?int $id): Response
     {
         $this->requireAdmin();
         $collection = $id !== null ? $this->collections->find($id) : null;
         if ($id !== null && $collection === null) {
-            $this->redirect('/admin/collections');
+            return $this->redirect('/admin/collections');
         }
         $collectionOptions = [];
         foreach ($this->collections->all() as $c) {
@@ -105,7 +106,7 @@ final class CollectionsController extends Controller
         ]);
     }
 
-    private function store(): string
+    private function store(): Response
     {
         $this->requireAdmin();
         $req = Request::fromGlobals();
@@ -114,48 +115,48 @@ final class CollectionsController extends Controller
         $name   = trim((string) $req->input('name'));
         $handle = Str::handle($req->input('handle') ?: $name);
         if ($name === '' || $handle === '' || $this->collections->handleExists($handle)) {
-            $this->redirect('/admin/collections/new');
+            return $this->redirect('/admin/collections/new');
         }
 
         try {
             $this->collectionService->create($handle, $name, $this->icon($req), (string) $req->input('description'), $this->options($req), $this->fieldDefs($req));
         } catch (\PDOException $e) {
             if (\Nimbus\Database\Connection::isDuplicateKey($e)) {
-                $this->redirect('/admin/collections/new'); // handle taken (race)
+                return $this->redirect('/admin/collections/new'); // handle taken (race)
             }
             throw $e;
         }
-        $this->redirect('/admin/collections?msg=created');
+        return $this->redirect('/admin/collections?msg=created');
     }
 
-    private function update(int $id): string
+    private function update(int $id): Response
     {
         $this->requireAdmin();
         $req = Request::fromGlobals();
         $this->requireCsrf($req);
 
         if ($this->collections->find($id) === null) {
-            $this->redirect('/admin/collections');
+            return $this->redirect('/admin/collections');
         }
         $name = trim((string) $req->input('name'));
         if ($name === '') {
-            $this->redirect("/admin/collections/{$id}/edit");
+            return $this->redirect("/admin/collections/{$id}/edit");
         }
         $this->collectionService->update($id, $name, $this->icon($req), (string) $req->input('description'), $this->options($req), $this->fieldDefs($req));
-        $this->redirect('/admin/collections?msg=updated');
+        return $this->redirect('/admin/collections?msg=updated');
     }
 
-    private function destroy(int $id): string
+    private function destroy(int $id): Response
     {
         $this->requireAdmin();
         $this->requireCsrf(Request::fromGlobals());
         $this->collectionService->delete($id);
-        $this->redirect('/admin/collections?msg=deleted');
+        return $this->redirect('/admin/collections?msg=deleted');
     }
 
     // =============================================================== entries
 
-    private function entriesIndex(string $handle): string
+    private function entriesIndex(string $handle): Response
     {
         $collection = $this->mustFind($handle);
         $this->guard();
@@ -176,18 +177,18 @@ final class CollectionsController extends Controller
         ]);
     }
 
-    private function entryForm(string $handle, ?int $id): string
+    private function entryForm(string $handle, ?int $id): Response
     {
         $collection = $this->mustFind($handle);
         $this->requireManage($collection);
         $entry = $id !== null ? $this->entries->find($collection->id, $id) : null;
         if ($id !== null && $entry === null) {
-            $this->redirect("/admin/collections/{$handle}/entries");
+            return $this->redirect("/admin/collections/{$handle}/entries");
         }
         return $this->renderEntryForm($collection, $this->modelFromEntry($collection, $entry), []);
     }
 
-    private function entryStore(string $handle): string
+    private function entryStore(string $handle): Response
     {
         $collection = $this->mustFind($handle);
         $this->requireManage($collection);
@@ -196,7 +197,7 @@ final class CollectionsController extends Controller
         return $this->saveEntry($collection, $req, null);
     }
 
-    private function entryUpdate(string $handle, int $id): string
+    private function entryUpdate(string $handle, int $id): Response
     {
         $collection = $this->mustFind($handle);
         $this->requireManage($collection);
@@ -204,13 +205,13 @@ final class CollectionsController extends Controller
         $this->requireCsrf($req);
 
         if ($this->entries->find($collection->id, $id) === null) {
-            $this->redirect("/admin/collections/{$handle}/entries");
+            return $this->redirect("/admin/collections/{$handle}/entries");
         }
         return $this->saveEntry($collection, $req, $id);
     }
 
     /** Read request -> input object -> EntryService; render errors or redirect. */
-    private function saveEntry(Collection $collection, Request $req, ?int $id): string
+    private function saveEntry(Collection $collection, Request $req, ?int $id): Response
     {
         $input  = $this->inputFromRequest($collection, $req);
         $result = $this->entryService->save($collection, $input, $id, $this->auth->user()?->id);
@@ -219,25 +220,25 @@ final class CollectionsController extends Controller
             return $this->renderEntryForm($collection, $this->modelFromInput($input, $id), $result->errors);
         }
         $msg = $id === null ? 'created' : ($collection->isSingle() ? 'saved' : 'updated');
-        $this->redirect("/admin/collections/{$collection->handle}/entries?msg={$msg}");
+        return $this->redirect("/admin/collections/{$collection->handle}/entries?msg={$msg}");
     }
 
-    private function entryDestroy(string $handle, int $id): string
+    private function entryDestroy(string $handle, int $id): Response
     {
         $collection = $this->mustFind($handle);
         $this->requireManage($collection);
         $this->requireCsrf(Request::fromGlobals());
         // Singletons aren't deleted as entries — there's always exactly one.
         if ($collection->isSingle() || $this->entries->find($collection->id, $id) === null) {
-            $this->redirect("/admin/collections/{$handle}/entries");
+            return $this->redirect("/admin/collections/{$handle}/entries");
         }
         $this->entryService->delete($collection, $id);
-        $this->redirect("/admin/collections/{$handle}/entries?msg=deleted");
+        return $this->redirect("/admin/collections/{$handle}/entries?msg=deleted");
     }
 
     // =============================================================== helpers
 
-    private function renderEntryForm(Collection $collection, array $model, array $errors, ?string $flash = null): string
+    private function renderEntryForm(Collection $collection, array $model, array $errors, ?string $flash = null): Response
     {
         // Relation pickers need their target collection's entries (id => title).
         $relationOptions = [];
@@ -381,7 +382,7 @@ final class CollectionsController extends Controller
     {
         $collection = $this->collections->findByHandle($handle);
         if ($collection === null) {
-            $this->redirect('/admin/collections');
+            $this->abortTo('/admin/collections');
         }
         return $collection;
     }
@@ -390,7 +391,7 @@ final class CollectionsController extends Controller
     {
         $this->guard();
         if (!Permissions::isAdmin($this->auth->user())) {
-            $this->redirect('/admin/collections');
+            $this->abortTo('/admin/collections');
         }
     }
 
@@ -398,14 +399,14 @@ final class CollectionsController extends Controller
     {
         $this->guard();
         if (!Permissions::canManage($this->auth->user(), $collection)) {
-            $this->redirect("/admin/collections/{$collection->handle}/entries");
+            $this->abortTo("/admin/collections/{$collection->handle}/entries");
         }
     }
 
     private function requireCsrf(Request $req): void
     {
         if (!Csrf::check($req->input('_token'))) {
-            $this->redirect('/admin/collections');
+            $this->abortTo('/admin/collections');
         }
     }
 }
