@@ -1,0 +1,10 @@
+# Default reviewer for everything.
+*                       @DanMat
+
+# Areas where a mistake is expensive and review should be deliberate.
+/src/Plugin/            @DanMat
+/src/Http/              @DanMat
+/src/Auth/              @DanMat
+/src/Database/          @DanMat
+/docs/adr/              @DanMat
+/.github/workflows/     @DanMat
