@@ -49,26 +49,26 @@ final class CollectionsController extends Controller
 
         $r->group('/admin/collections', [$this->authMw], function (Router $g): void {
             // ---- collections (structural: admin only) ----
-            $g->get('', fn (): Response => $this->index())->name('admin.collections.index');
-            $g->get('/new', fn (): Response => $this->form(null))->name('admin.collections.new');
-            $g->post('', fn (): Response => $this->store());
-            $g->get('/{id}/edit', fn (array $p): Response => $this->form((int) $p['id']))->name('admin.collections.edit');
-            $g->post('/{id}', fn (array $p): Response => $this->update((int) $p['id']));
-            $g->post('/{id}/delete', fn (array $p): Response => $this->destroy((int) $p['id']));
+            $g->get('', fn (Request $req, array $p): Response => $this->index($req))->name('admin.collections.index');
+            $g->get('/new', fn (Request $req, array $p): Response => $this->form(null))->name('admin.collections.new');
+            $g->post('', fn (Request $req, array $p): Response => $this->store($req));
+            $g->get('/{id}/edit', fn (Request $req, array $p): Response => $this->form((int) $p['id']))->name('admin.collections.edit');
+            $g->post('/{id}', fn (Request $req, array $p): Response => $this->update($req, (int) $p['id']));
+            $g->post('/{id}/delete', fn (Request $req, array $p): Response => $this->destroy($req, (int) $p['id']));
 
             // ---- entries ----
-            $g->get('/{handle}/entries', fn (array $p): Response => $this->entriesIndex($p['handle']))->name('admin.entries.index');
-            $g->get('/{handle}/entries/new', fn (array $p): Response => $this->entryForm($p['handle'], null))->name('admin.entries.new');
-            $g->post('/{handle}/entries', fn (array $p): Response => $this->entryStore($p['handle']));
-            $g->get('/{handle}/entries/{id}/edit', fn (array $p): Response => $this->entryForm($p['handle'], (int) $p['id']))->name('admin.entries.edit');
-            $g->post('/{handle}/entries/{id}', fn (array $p): Response => $this->entryUpdate($p['handle'], (int) $p['id']));
-            $g->post('/{handle}/entries/{id}/delete', fn (array $p): Response => $this->entryDestroy($p['handle'], (int) $p['id']));
+            $g->get('/{handle}/entries', fn (Request $req, array $p): Response => $this->entriesIndex($req, $p['handle']))->name('admin.entries.index');
+            $g->get('/{handle}/entries/new', fn (Request $req, array $p): Response => $this->entryForm($p['handle'], null))->name('admin.entries.new');
+            $g->post('/{handle}/entries', fn (Request $req, array $p): Response => $this->entryStore($req, $p['handle']));
+            $g->get('/{handle}/entries/{id}/edit', fn (Request $req, array $p): Response => $this->entryForm($p['handle'], (int) $p['id']))->name('admin.entries.edit');
+            $g->post('/{handle}/entries/{id}', fn (Request $req, array $p): Response => $this->entryUpdate($req, $p['handle'], (int) $p['id']));
+            $g->post('/{handle}/entries/{id}/delete', fn (Request $req, array $p): Response => $this->entryDestroy($req, $p['handle'], (int) $p['id']));
         });
     }
 
     // =========================================================== collections
 
-    private function index(): Response
+    private function index(Request $req): Response
     {
         $rows = [];
         foreach ($this->collections->all() as $c) {
@@ -81,7 +81,7 @@ final class CollectionsController extends Controller
         return $this->page('collections/index', 'collections', [
             'rows'    => $rows,
             'isAdmin' => Permissions::isAdmin($this->auth->user()),
-            'flash'   => Request::fromGlobals()->query('msg'),
+            'flash'   => $req->query('msg'),
         ]);
     }
 
@@ -107,10 +107,9 @@ final class CollectionsController extends Controller
         ]);
     }
 
-    private function store(): Response
+    private function store(Request $req): Response
     {
         $this->requireAdmin();
-        $req = Request::fromGlobals();
         $this->requireCsrf($req);
 
         $name   = trim((string) $req->input('name'));
@@ -130,10 +129,9 @@ final class CollectionsController extends Controller
         return $this->redirect('/admin/collections?msg=created');
     }
 
-    private function update(int $id): Response
+    private function update(Request $req, int $id): Response
     {
         $this->requireAdmin();
-        $req = Request::fromGlobals();
         $this->requireCsrf($req);
 
         if ($this->collections->find($id) === null) {
@@ -147,17 +145,17 @@ final class CollectionsController extends Controller
         return $this->redirect('/admin/collections?msg=updated');
     }
 
-    private function destroy(int $id): Response
+    private function destroy(Request $req, int $id): Response
     {
         $this->requireAdmin();
-        $this->requireCsrf(Request::fromGlobals());
+        $this->requireCsrf($req);
         $this->collectionService->delete($id);
         return $this->redirect('/admin/collections?msg=deleted');
     }
 
     // =============================================================== entries
 
-    private function entriesIndex(string $handle): Response
+    private function entriesIndex(Request $req, string $handle): Response
     {
         $collection = $this->mustFind($handle);
 
@@ -165,15 +163,15 @@ final class CollectionsController extends Controller
         if ($collection->isSingle()) {
             $this->requireManage($collection);
             $entry = $this->entries->firstForCollection($collection->id);
-            return $this->renderEntryForm($collection, $this->modelFromEntry($collection, $entry), [], Request::fromGlobals()->query('msg'));
+            return $this->renderEntryForm($collection, $this->modelFromEntry($collection, $entry), [], $req->query('msg'));
         }
 
         return $this->page('entries/index', 'collections', [
             'collection' => $collection,
-            'rows'       => $this->entries->forCollection($collection->id, Request::fromGlobals()->query('q')),
+            'rows'       => $this->entries->forCollection($collection->id, $req->query('q')),
             'types'      => $this->types,
             'canManage'  => Permissions::canManage($this->auth->user(), $collection),
-            'flash'      => Request::fromGlobals()->query('msg'),
+            'flash'      => $req->query('msg'),
         ]);
     }
 
@@ -188,20 +186,18 @@ final class CollectionsController extends Controller
         return $this->renderEntryForm($collection, $this->modelFromEntry($collection, $entry), []);
     }
 
-    private function entryStore(string $handle): Response
+    private function entryStore(Request $req, string $handle): Response
     {
         $collection = $this->mustFind($handle);
         $this->requireManage($collection);
-        $req = Request::fromGlobals();
         $this->requireCsrf($req);
         return $this->saveEntry($collection, $req, null);
     }
 
-    private function entryUpdate(string $handle, int $id): Response
+    private function entryUpdate(Request $req, string $handle, int $id): Response
     {
         $collection = $this->mustFind($handle);
         $this->requireManage($collection);
-        $req = Request::fromGlobals();
         $this->requireCsrf($req);
 
         if ($this->entries->find($collection->id, $id) === null) {
@@ -223,11 +219,11 @@ final class CollectionsController extends Controller
         return $this->redirect("/admin/collections/{$collection->handle}/entries?msg={$msg}");
     }
 
-    private function entryDestroy(string $handle, int $id): Response
+    private function entryDestroy(Request $req, string $handle, int $id): Response
     {
         $collection = $this->mustFind($handle);
         $this->requireManage($collection);
-        $this->requireCsrf(Request::fromGlobals());
+        $this->requireCsrf($req);
         // Singletons aren't deleted as entries — there's always exactly one.
         if ($collection->isSingle() || $this->entries->find($collection->id, $id) === null) {
             return $this->redirect("/admin/collections/{$handle}/entries");

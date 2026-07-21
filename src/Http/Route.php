@@ -17,8 +17,8 @@ final class Route
     private array $middleware;
 
     /**
-     * @param callable        $handler
-     * @param array<int,callable> $middleware
+     * @param callable(Request,array<string,string>):Response $handler
+     * @param array<int,callable(Request):?Response>          $middleware
      */
     public function __construct(
         public readonly string $method,
@@ -47,7 +47,8 @@ final class Route
     }
 
     /**
-     * Run middleware then the handler for a matched request.
+     * Run middleware then the handler for a matched request. Handlers receive
+     * the same Request instance the kernel built — no handler re-reads globals.
      *
      * @param array<string,string> $params
      */
@@ -59,7 +60,7 @@ final class Route
                 return $result;
             }
         }
-        return ($this->handler)($params);
+        return ($this->handler)($request, $params);
     }
 
     /**
