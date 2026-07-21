@@ -20,17 +20,17 @@ final class AdminController extends Controller
     public function routes(Router $r): void
     {
         // Public (no auth middleware).
-        $r->get('/admin/login', fn (): Response => $this->loginForm())->name('admin.login');
-        $r->post('/admin/login', fn (): Response => $this->login());
-        $r->post('/admin/logout', fn (): Response => $this->logout())->name('admin.logout');
+        $r->get('/admin/login', fn (Request $req, array $p): Response => $this->loginForm())->name('admin.login');
+        $r->post('/admin/login', fn (Request $req, array $p): Response => $this->login($req));
+        $r->post('/admin/logout', fn (Request $req, array $p): Response => $this->logout($req))->name('admin.logout');
 
         // Everything else is gated by the auth middleware.
         $r->group('/admin', [$this->authMw], function (Router $g): void {
-            $g->get('', fn (): Response => $this->dashboardPage())->name('admin.dashboard');
-            $g->get('/dashboard', fn (): Response => $this->dashboardPage());
+            $g->get('', fn (Request $req, array $p): Response => $this->dashboardPage())->name('admin.dashboard');
+            $g->get('/dashboard', fn (Request $req, array $p): Response => $this->dashboardPage());
 
             foreach (['media', 'users', 'settings'] as $section) {
-                $g->get("/{$section}", fn (): Response => $this->page('stub', $section, ['title' => ucfirst($section)]))->name("admin.{$section}");
+                $g->get("/{$section}", fn (Request $req, array $p): Response => $this->page('stub', $section, ['title' => ucfirst($section)]))->name("admin.{$section}");
             }
         });
     }
@@ -43,9 +43,8 @@ final class AdminController extends Controller
         return $this->bare('login', ['error' => $error, 'csrf' => Csrf::token()]);
     }
 
-    private function login(): Response
+    private function login(Request $req): Response
     {
-        $req = Request::fromGlobals();
         if (!Csrf::check($req->input('_token'))) {
             return $this->loginForm('Your session expired. Please try again.');
         }
@@ -66,9 +65,9 @@ final class AdminController extends Controller
         return $this->loginForm('Invalid email or password.');
     }
 
-    private function logout(): Response
+    private function logout(Request $req): Response
     {
-        if (Csrf::check(Request::fromGlobals()->input('_token'))) {
+        if (Csrf::check($req->input('_token'))) {
             $this->auth->logout();
             $_SESSION = [];
             if (ini_get('session.use_cookies')) {

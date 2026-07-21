@@ -19,17 +19,55 @@ final class RouterTest extends TestCase
     public function test_static_and_param_routes_dispatch(): void
     {
         $router = new Router();
-        $router->get('/admin', fn (): Response => Response::html('dash'));
-        $router->get('/admin/collections/{handle}/entries/{id}/edit', fn (array $p): Response => Response::html("{$p['handle']}:{$p['id']}"));
+        $router->get('/admin', fn (Request $req, array $p): Response => Response::html('dash'));
+        $router->get('/admin/collections/{handle}/entries/{id}/edit', fn (Request $req, array $p): Response => Response::html("{$p['handle']}:{$p['id']}"));
 
         self::assertSame('dash', $router->dispatch($this->request('GET', '/admin'))->body);
         self::assertSame('posts:9', $router->dispatch($this->request('GET', '/admin/collections/posts/entries/9/edit'))->body);
     }
 
+    public function test_handler_receives_the_dispatched_request_instance(): void
+    {
+        $router   = new Router();
+        $received = null;
+        $router->get('/admin/{id}', function (Request $req, array $p) use (&$received): Response {
+            $received = $req;
+            return Response::html((string) $p['id']);
+        });
+
+        $request  = $this->request('GET', '/admin/7');
+        $response = $router->dispatch($request);
+
+        self::assertSame($request, $received, 'handler must get the kernel Request, not a re-read of globals');
+        self::assertSame('7', $response->body);
+    }
+
+    public function test_middleware_and_handler_share_one_request(): void
+    {
+        $router = new Router();
+        $seen   = [];
+        $router->group('/admin', [function (Request $r) use (&$seen): ?Response {
+            $seen[] = $r;
+            return null;
+        }], function (Router $g) use (&$seen): void {
+            $g->get('/collections', function (Request $r, array $p) use (&$seen): Response {
+                $seen[] = $r;
+                return Response::html('ok');
+            });
+        });
+
+        $request = $this->request('GET', '/admin/collections');
+        $router->dispatch($request);
+
+        self::assertCount(2, $seen);
+        self::assertSame($request, $seen[0]);
+        self::assertSame($seen[0], $seen[1], 'middleware and handler operate on one request');
+    }
+
     public function test_no_match_returns_null(): void
     {
         $router = new Router();
-        $router->get('/admin', fn (): Response => Response::html('x'));
+        $router->get('/admin', fn (Request $req, array $p): Response => Response::html('x'));
 
         self::assertNull($router->dispatch($this->request('GET', '/nope')));
         self::assertNull($router->dispatch($this->request('POST', '/admin'))); // wrong method
@@ -38,7 +76,7 @@ final class RouterTest extends TestCase
     public function test_named_route_url_generation(): void
     {
         $router = new Router();
-        $router->get('/admin/collections/{handle}/entries/{id}/edit', fn (): Response => Response::html('x'))->name('entries.edit');
+        $router->get('/admin/collections/{handle}/entries/{id}/edit', fn (Request $req, array $p): Response => Response::html('x'))->name('entries.edit');
 
         self::assertSame('/admin/collections/posts/entries/9/edit', $router->url('entries.edit', ['handle' => 'posts', 'id' => 9]));
         // extra params become a query string
@@ -55,7 +93,7 @@ final class RouterTest extends TestCase
     {
         $router = new Router();
         $reached = false;
-        $router->get('/admin', function () use (&$reached): Response {
+        $router->get('/admin', function (Request $req, array $p) use (&$reached): Response {
             $reached = true;
             return Response::html('handler');
         })->middleware(fn (Request $r): Response => Response::redirect('/login'));
@@ -75,7 +113,7 @@ final class RouterTest extends TestCase
             return null; // pass through
         };
         $router->group('/admin', [$mw], function (Router $g): void {
-            $g->get('/collections', fn (): Response => Response::html('list'))->name('collections');
+            $g->get('/collections', fn (Request $req, array $p): Response => Response::html('list'))->name('collections');
         });
 
         self::assertSame('list', $router->dispatch($this->request('GET', '/admin/collections'))->body);

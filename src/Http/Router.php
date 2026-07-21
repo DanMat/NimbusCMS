@@ -20,11 +20,13 @@ final class Router
     /** @var array<int,array<int,callable>> active group-middleware stack */
     private array $middlewareStack = [];
 
+    /** @param callable(Request,array<string,string>):Response $handler */
     public function get(string $pattern, callable $handler): Route
     {
         return $this->add('GET', $pattern, $handler);
     }
 
+    /** @param callable(Request,array<string,string>):Response $handler */
     public function post(string $pattern, callable $handler): Route
     {
         return $this->add('POST', $pattern, $handler);
@@ -74,6 +76,7 @@ final class Router
         throw new \RuntimeException("Unknown route name: {$name}");
     }
 
+    /** @param callable(Request,array<string,string>):Response $handler */
     private function add(string $method, string $pattern, callable $handler): Route
     {
         $route = new Route(
